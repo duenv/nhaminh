@@ -8,6 +8,8 @@
 <meta name="theme-color" content="#0D6858">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
 <meta name="apple-mobile-web-app-title" content="Nhà Mình">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
@@ -179,6 +181,22 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:80;
   max-width:min(90vw,420px);padding:10px 16px;border-radius:12px;background:var(--ink);color:var(--bg);font-size:14px;text-align:center}
+.install-bar{flex:none;display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 6px 8px 10px;border-radius:14px;background:var(--accent-soft);font-size:13.5px}
+.install-bar img{width:38px;height:38px;border-radius:10px;flex:none}
+.install-bar .grow{flex:1;min-width:0;color:var(--muted)}
+.install-bar .grow b{display:block;color:var(--ink);font-size:14.5px}
+.install-bar .btn{min-height:34px;padding:0 14px}
+.install-bar .x{flex:none;background:none;border:0;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:4px 8px}
+.sheet{position:fixed;inset:0;z-index:75;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center}
+.sheet-card{background:var(--surface);color:var(--ink);width:100%;max-width:520px;max-height:90%;overflow-y:auto;border-radius:22px 22px 0 0;
+  padding:22px max(20px, env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(20px, env(safe-area-inset-left,0px))}
+.sheet-card h2{margin-bottom:4px}
+.sheet-card ol{padding-left:22px;margin:14px 0 18px;display:flex;flex-direction:column;gap:12px;font-size:15px}
+.sheet-card .ico{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--surface-2);color:var(--accent);vertical-align:middle;margin:0 2px}
+.sheet-card .ico svg{width:18px;height:18px}
+.sheet-card .note{margin:0 0 16px;padding:10px 12px;border-radius:12px;background:var(--demo-soft);color:var(--demo);font-size:13.5px}
+.sheet-card .linkbox{display:flex;gap:8px;margin:0 0 16px}
+.sheet-card .linkbox input{flex:1;min-width:0}
 #callUI:not([hidden]) ~ .toast{bottom:auto;top:calc(64px + env(safe-area-inset-top,0px))}
 .viewer{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:var(--scrim);cursor:zoom-out;padding:16px}
 .viewer img{max-width:100%;max-height:100%;border-radius:8px}
@@ -235,6 +253,12 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
     <span>Bản xem thử · dữ liệu mẫu</span>
     <button type="button" id="demoIncoming">Thử cuộc gọi đến</button>
     <button type="button" id="demoExit">Thoát xem thử</button>
+  </div>
+  <div class="install-bar" id="installBar" hidden>
+    <img src="icon-192.png" alt="" onerror="this.remove()">
+    <div class="grow"><b>Cài Nhà Mình lên màn hình chính</b><span id="installBarSub">Mở nhanh như ứng dụng, toàn màn hình</span></div>
+    <button class="btn primary" type="button" id="installBarBtn">Cài</button>
+    <button class="x" type="button" id="installBarX" aria-label="Ẩn gợi ý cài app">×</button>
   </div>
   <div class="banner" id="banner" hidden></div>
 
@@ -354,7 +378,7 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
           <a class="btn primary" id="meetLink" href="#" target="_blank" rel="noopener noreferrer">Vào phòng</a>
         </div>
         <div class="people" id="callList"></div>
-        <p class="hint">Hàng nút thứ hai dùng ứng dụng điện thoại hoặc Zalo của máy, khi người nhà không mở app.</p>
+        <p class="hint">Hàng nút thứ hai mở ứng dụng Điện thoại, Zalo hoặc Viber trên máy, dùng khi người nhà không mở Nhà Mình. Viber cần cài sẵn trên cả hai máy.</p>
       </div></div>
     </section>
 
@@ -432,6 +456,14 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div class="sheet" id="installSheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="installTitle">
+    <h2 id="installTitle">Cài Nhà Mình lên màn hình chính</h2>
+    <p class="hint" id="installLead"></p>
+    <div id="installSteps"></div>
+    <button class="btn primary" type="button" id="installSheetClose" style="width:100%">Đã hiểu</button>
+  </div>
+</div>
 <div class="viewer" id="viewer" hidden><img id="viewerImg" alt="Ảnh phóng to"></div>
 
 <script>
@@ -552,6 +584,7 @@ var AUTO_DEMO = false;
     return p;
   }
   function zaloNum(p) { return p.replace(/^\+84/, "0").replace(/^\+/, ""); }
+  function intlNum(p) { return /^\+/.test(p) ? p : p.replace(/^0/, "+84"); }
   function safeMapLink(s) {
     try {
       var u = new URL(String(s || "").trim());
@@ -838,6 +871,7 @@ var AUTO_DEMO = false;
       var sub = !mine && phone ? h("div", { class: "c-acts sub" },
         h("a", { class: "btn", href: "tel:" + phone, target: "_top", text: "Điện thoại" }),
         h("a", { class: "btn", href: "https://zalo.me/" + zaloNum(phone), target: "_blank", rel: "noopener noreferrer", text: "Zalo" }),
+        h("a", { class: "btn", href: "viber://chat?number=" + encodeURIComponent(intlNum(phone)), target: "_top", text: "Viber" }),
         h("button", { class: "btn", type: "button", text: "Chép số", onclick: function () { copyPhone(phone, num); } })) : null;
       els.callList.appendChild(h("div", { class: "person" }, avatar(id, true),
         h("div", { class: "p-main" }, h("div", { class: "p-name", text: nameOf(id) + (mine ? " (bạn)" : "") }), num), acts, sub));
@@ -1301,7 +1335,7 @@ var AUTO_DEMO = false;
     api("join", $("jCode").value.trim(), profile).then(function (r) {
       S.token = r.token; S.me = r.id; if (S.mode !== "demo") lsSet(TK, r.token);
       toast(r.returning ? "Chào mừng " + profile.name + " quay lại." : "Đã vào nhóm. Chào " + profile.name + "!");
-      openTab("chat"); return poll();
+      openTab("chat"); updateInstallUI(); return poll();
     }).catch(function (e) { toast(isUserMsg(e) ? errText(e) : "Chưa vào được nhóm. Kiểm tra mạng và địa chỉ máy chủ."); })
       .then(function () { $("jBtn").disabled = false; });
   });
@@ -1442,7 +1476,7 @@ var AUTO_DEMO = false;
     };
   }
   function startDemo() {
-    DEMO = makeDemo(); S.mode = "demo"; S.token = "demo-token-000000000000000000000"; S.me = "d-minh";
+    DEMO = makeDemo(); S.mode = "demo"; S.token = "demo-token-000000000000000000000"; S.me = "d-minh"; $("installBar").hidden = true;
     $("demoBar").hidden = false; $("demoExit").hidden = AUTO_DEMO;
     openTab("chat"); poll();
   }
@@ -1460,15 +1494,96 @@ var AUTO_DEMO = false;
     setTimeout(poll, 2000);
   });
 
-  /* ---------- cài app (PWA) ---------- */
-  var installEvt = null;
-  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); installEvt = e; $("installBox").hidden = false; });
-  window.addEventListener("appinstalled", function () { installEvt = null; $("installBox").hidden = true; toast("Đã cài Nhà Mình lên máy."); });
-  $("installBtn").addEventListener("click", function () {
-    if (!installEvt) return;
-    installEvt.prompt();
-    installEvt.userChoice.then(function () { installEvt = null; $("installBox").hidden = true; });
-  });
+  /* ---------- cài app (PWA) — Android, iPhone/iPad (Safari, Chrome, Edge), máy tính ---------- */
+  var installEvt = null, IB = "nhaminh.installHidden";
+  var UA = navigator.userAgent || "";
+  var isIOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var isAndroid = /Android/i.test(UA);
+  var iosVer = (function () { var m = UA.match(/OS (\d+)_(\d+)/); return m ? Number(m[1]) + Number(m[2]) / 100 : (isIOS ? 17 : 0); })();
+  var iosBrowser = /CriOS/.test(UA) ? "Chrome" : /EdgiOS/.test(UA) ? "Edge" : /FxiOS/.test(UA) ? "Firefox"
+    : /Zalo|FBAN|FBAV|Instagram|Line\/|GSA\//i.test(UA) ? "inapp" : "Safari";
+  var SVG_SHARE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11v9h12v-9"/></svg>';
+  var SVG_ADD = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg>';
+  var SVG_DOTS = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="19" r="1.6" fill="currentColor"/></svg>';
+  function isStandalone() {
+    try { return window.matchMedia("(display-mode: standalone)").matches || window.matchMedia("(display-mode: fullscreen)").matches || navigator.standalone === true; }
+    catch (e) { return false; }
+  }
+  function canInstallHere() { return !isStandalone() && S.mode !== "demo" && S.mode !== "gas" && location.protocol === "https:"; }
+  function updateInstallUI() {
+    var show = canInstallHere();
+    $("installBox").hidden = !show;
+    var bar = show && (isIOS || isAndroid || !!installEvt) && lsGet(IB) !== "1";
+    $("installBar").hidden = !bar;
+    $("installBarSub").textContent = isIOS && !S.token
+      ? "Nên cài trước, rồi mở từ biểu tượng để vào nhóm"
+      : "Mở nhanh như ứng dụng, toàn màn hình";
+  }
+  function li(html) { var e = document.createElement("li"); e.innerHTML = html; return e; }
+  var ico = function (svgStr) { return '<span class="ico">' + svgStr + "</span>"; };
+  function openInstall() {
+    if (installEvt) {
+      installEvt.prompt();
+      installEvt.userChoice.then(function (c) { installEvt = null; updateInstallUI(); if (c && c.outcome === "accepted") toast("Đang cài Nhà Mình…"); });
+      return;
+    }
+    var box = $("installSteps"); box.innerHTML = "";
+    var ol = document.createElement("ol"), lead = "";
+    if (isIOS) {
+      var okBrowser = iosBrowser === "Safari" || ((iosBrowser === "Chrome" || iosBrowser === "Edge" || iosBrowser === "Firefox") && iosVer >= 16.4);
+      if (!okBrowser) {
+        lead = iosBrowser === "inapp"
+          ? "Bạn đang mở link bên trong một ứng dụng khác (Zalo, Facebook…). Hãy mở bằng Safari để cài:"
+          : "Trình duyệt này chưa cài được app trên iOS " + Math.floor(iosVer) + ". Hãy mở link bằng Safari:";
+        ol.appendChild(li("Bấm " + ico(SVG_DOTS) + " hoặc " + ico(SVG_SHARE) + " rồi chọn <b>Mở trong Safari</b>, hoặc chép link bên dưới và dán vào Safari."));
+        ol.appendChild(li("Trong Safari, bấm " + ico(SVG_SHARE) + " <b>Chia sẻ</b> → " + ico(SVG_ADD) + " <b>Thêm vào MH chính</b> → <b>Thêm</b>."));
+        var lb = h("div", { class: "linkbox" }, h("input", { class: "t", id: "installLink", readonly: true, value: location.origin + location.pathname }),
+          h("button", { class: "btn", type: "button", text: "Chép link", onclick: function () {
+            var inp = $("installLink");
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(inp.value).then(function () { toast("Đã chép link."); }, function () { inp.select(); });
+            else inp.select();
+          } }));
+        box.appendChild(ol); box.appendChild(lb);
+      } else {
+        lead = "Trên iPhone/iPad, " + iosBrowser + " cài app qua nút Chia sẻ:";
+        ol.appendChild(li("Bấm nút " + ico(SVG_SHARE) + " <b>Chia sẻ</b> " + (iosBrowser === "Safari"
+          ? "ở thanh dưới cùng (iPad: góc trên bên phải; nếu không thấy, chạm nhẹ vào thanh địa chỉ để hiện thanh công cụ)."
+          : "ở thanh địa chỉ phía trên (hoặc trong menu " + ico(SVG_DOTS) + ").")));
+        ol.appendChild(li("Kéo danh sách lên, chọn " + ico(SVG_ADD) + " <b>Thêm vào MH chính</b>. Nếu không thấy, bấm <b>Sửa tác vụ…</b> hoặc <b>Xem thêm</b> ở cuối danh sách."));
+        ol.appendChild(li("Bật <b>Mở dưới dạng ứng dụng web</b> nếu có, rồi bấm <b>Thêm</b>."));
+        ol.appendChild(li("Mở <b>Nhà Mình</b> từ biểu tượng ngoài màn hình chính" + (S.token ? " và vào lại nhóm với cùng số điện thoại." : ", rồi vào nhóm tại đó.")));
+        box.appendChild(ol);
+        box.appendChild(h("p", { class: "note", text: "Trên iPhone, app ngoài màn hình chính không dùng chung đăng nhập với trình duyệt. Vì vậy hãy vào nhóm trong app sau khi cài. Nhập đúng số điện thoại cũ thì hồ sơ được giữ nguyên." }));
+      }
+    } else if (isAndroid) {
+      var samsung = /SamsungBrowser/i.test(UA);
+      lead = samsung ? "Trên Samsung Internet:" : "Trên Chrome Android:";
+      if (samsung) {
+        ol.appendChild(li("Bấm nút <b>≡</b> (menu) ở góc dưới bên phải."));
+        ol.appendChild(li("Chọn <b>Thêm trang vào</b> → <b>Màn hình chính</b> → <b>Thêm</b>."));
+      } else {
+        ol.appendChild(li("Bấm " + ico(SVG_DOTS) + " ở góc trên bên phải."));
+        ol.appendChild(li("Chọn <b>Cài đặt và tạo lối tắt</b> (máy khác có thể ghi <b>Cài đặt ứng dụng</b> hoặc <b>Thêm vào màn hình chính</b>)."));
+        ol.appendChild(li("Chọn <b>Cài đặt</b>, không chọn \"Tạo lối tắt\". App sẽ có biểu tượng ngoài màn hình và trong danh sách ứng dụng."));
+      }
+      box.appendChild(ol);
+      box.appendChild(h("p", { class: "note", text: "Máy Xiaomi, Oppo, Vivo, Realme: nếu không thấy biểu tượng, vào Cài đặt → Ứng dụng → Chrome → Quyền và bật \"Lối tắt trên màn hình chính\"." }));
+    } else {
+      lead = "Trên máy tính (Chrome hoặc Edge):";
+      ol.appendChild(li("Bấm biểu tượng <b>cài đặt</b> ở cuối thanh địa chỉ, hoặc mở menu " + ico(SVG_DOTS) + "."));
+      ol.appendChild(li("Chọn <b>Cài đặt Nhà Mình</b> (Edge: <b>Ứng dụng → Cài đặt trang web này như một ứng dụng</b>)."));
+      box.appendChild(ol);
+    }
+    $("installLead").textContent = lead;
+    $("installSheet").hidden = false;
+  }
+  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); installEvt = e; updateInstallUI(); });
+  window.addEventListener("appinstalled", function () { installEvt = null; updateInstallUI(); toast("Đã cài Nhà Mình lên máy."); });
+  $("installBtn").addEventListener("click", openInstall);
+  $("installBarBtn").addEventListener("click", openInstall);
+  $("installBarX").addEventListener("click", function () { lsSet(IB, "1"); updateInstallUI(); });
+  $("installSheetClose").addEventListener("click", function () { $("installSheet").hidden = true; });
+  $("installSheet").addEventListener("click", function (e) { if (e.target === $("installSheet")) $("installSheet").hidden = true; });
   try {
     if ("serviceWorker" in navigator && location.protocol === "https:" && !AUTO_DEMO && !(window.google && window.google.script)) {
       navigator.serviceWorker.register("sw.js").catch(function () {});
@@ -1490,6 +1605,7 @@ var AUTO_DEMO = false;
     if (!S.mode) { showSetup(); return; }
     S.token = lsGet(TK);
     if (S.token) { openTab("chat"); poll(); } else showJoin();
+    updateInstallUI();
   }
   boot();
 })();
