@@ -181,6 +181,11 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:80;
   max-width:min(90vw,420px);padding:10px 16px;border-radius:12px;background:var(--ink);color:var(--bg);font-size:14px;text-align:center}
+.btn.zalo{background:#0068FF;border-color:transparent;color:#FFFFFF;width:100%;min-height:46px;font-size:15px}
+.btn.zalo b{font-weight:800;letter-spacing:.01em}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:14px 0 4px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.zalo-note{margin:0 0 4px;padding:10px 12px;border-radius:12px;background:var(--accent-soft);color:var(--ink);font-size:14px}
 .install-bar{flex:none;display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 6px 8px 10px;border-radius:14px;background:var(--accent-soft);font-size:13.5px}
 .install-bar img{width:38px;height:38px;border-radius:10px;flex:none}
 .install-bar .grow{flex:1;min-width:0;color:var(--muted)}
@@ -290,6 +295,11 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
         <div class="card">
           <h2>Vào nhóm gia đình</h2>
           <p class="lead">Nhập mã gia đình do người cài app gửi. Đổi điện thoại thì nhập lại đúng số điện thoại cũ để lấy lại hồ sơ.</p>
+          <div id="zaloBox" hidden>
+            <button class="btn zalo" type="button" id="zaloBtn">Đăng nhập bằng&nbsp;<b>Zalo</b></button>
+            <div class="or">hoặc vào bằng mã gia đình</div>
+          </div>
+          <p class="zalo-note" id="zaloPending" hidden></p>
           <form class="stack-form" id="joinForm" autocomplete="off">
             <label class="f" for="jCode">Mã gia đình
               <input class="t code" id="jCode" maxlength="16" placeholder="VD: K7M2QX9P" required>
@@ -400,6 +410,11 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
             <div class="f" role="radiogroup" aria-label="Màu của bạn"><span>Màu của bạn</span><div class="swatches" id="pSwatches"></div></div>
             <div class="form-end"><button class="btn primary" type="submit" id="pSave">Lưu hồ sơ</button></div>
           </form>
+        </div>
+        <div class="card" id="zaloCard" hidden>
+          <h2>Đăng nhập bằng Zalo</h2>
+          <p class="hint" id="zaloState" style="margin-bottom:12px"></p>
+          <div class="form-end" id="zaloActs"></div>
         </div>
         <div class="card">
           <h2>Đặt ra màn hình chính</h2>
@@ -665,7 +680,7 @@ var AUTO_DEMO = false;
   }
   function showJoin() {
     showOnly("view-join"); els.tabs.hidden = true; els.stack.hidden = true; els.sub.textContent = "Nhóm gia đình";
-    $("changeServer").hidden = S.mode !== "http";
+    $("changeServer").hidden = S.mode !== "http" || API_RE.test(API_URL);
   }
   function openTab(t) {
     if (!S.token) return showJoin();
@@ -892,13 +907,13 @@ var AUTO_DEMO = false;
 
   /* ---------- đồng bộ ---------- */
   function applySync(r) {
-    S.rev = r.rev; S.me = r.me; S.myEmail = r.myEmail || ""; S.synced = true;
+    S.rev = r.rev; S.me = r.me; S.myEmail = r.myEmail || ""; S.synced = true; S.zaloLinked = !!r.zaloLinked;
     if (r.config) S.config = r.config;
     var next = {}; (r.members || []).forEach(function (m) { next[m.id] = m; }); S.members = next;
     Object.keys(S.msgs).forEach(function (k) { var m = S.msgs[k]; if (m.pending || (m.row || 0) >= r.firstRow) delete S.msgs[k]; });
     (r.messages || []).forEach(function (m) { S.msgs[m.id] = m; });
     if (S.oldestRow == null || r.firstRow < S.oldestRow) S.oldestRow = r.firstRow;
-    renderAll(); fillProfile();
+    renderAll(); fillProfile(); renderZaloCard();
   }
   function schedule() {
     clearTimeout(S.timer);
@@ -1331,9 +1346,11 @@ var AUTO_DEMO = false;
     var profile = { name: $("jName").value.trim(), phone: $("jPhone").value.trim(), email: $("jEmail").value.trim(), color: pickedColor("j") };
     if (!profile.name) { toast("Nhập tên gọi trong nhà."); return; }
     if (profile.phone && !normPhone(profile.phone)) { toast("Số điện thoại chưa hợp lệ."); return; }
+    if (S.zaloTicket) profile.zaloTicket = S.zaloTicket;
     $("jBtn").disabled = true;
     api("join", $("jCode").value.trim(), profile).then(function (r) {
       S.token = r.token; S.me = r.id; if (S.mode !== "demo") lsSet(TK, r.token);
+      if (S.zaloTicket) { S.zaloTicket = null; $("zaloPending").hidden = true; }
       toast(r.returning ? "Chào mừng " + profile.name + " quay lại." : "Đã vào nhóm. Chào " + profile.name + "!");
       openTab("chat"); updateInstallUI(); return poll();
     }).catch(function (e) { toast(isUserMsg(e) ? errText(e) : "Chưa vào được nhóm. Kiểm tra mạng và địa chỉ máy chủ."); })
@@ -1494,6 +1511,75 @@ var AUTO_DEMO = false;
     setTimeout(poll, 2000);
   });
 
+  /* ---------- đăng nhập bằng Zalo (OAuth v4 + PKCE; khoá bí mật chỉ nằm ở máy chủ) ---------- */
+  var ZK = "nhaminh.zalo";
+  function b64url(buf) {
+    var bin = "", bytes = new Uint8Array(buf);
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function zaloRedirect() { return location.origin + location.pathname; }
+  function startZalo(mode) {
+    if (!S.zaloAppId) { toast("Đăng nhập Zalo chưa được bật."); return; }
+    if (!window.crypto || !crypto.subtle) { toast("Trình duyệt này không hỗ trợ đăng nhập Zalo."); return; }
+    var ver = b64url(crypto.getRandomValues(new Uint8Array(48)));
+    var st = b64url(crypto.getRandomValues(new Uint8Array(16)));
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(ver)).then(function (d) {
+      lsSet(ZK, JSON.stringify({ ver: ver, st: st, mode: mode, at: Date.now() }));
+      var q = new URLSearchParams({ app_id: S.zaloAppId, redirect_uri: zaloRedirect(), code_challenge: b64url(d), state: st });
+      location.href = "https://oauth.zaloapp.com/v4/permission?" + q.toString();
+    });
+  }
+  function handleZaloReturn() {
+    var q;
+    try { q = new URLSearchParams(location.search); } catch (e) { return Promise.resolve(false); }
+    var code = q.get("code"), st = q.get("state");
+    if (!code && !q.get("error")) return Promise.resolve(false);
+    try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) {}
+    var saved = null;
+    try { saved = JSON.parse(lsGet(ZK) || "null"); } catch (e) {}
+    lsSet(ZK, null);
+    if (!code) { toast("Bạn đã huỷ đăng nhập Zalo."); return Promise.resolve(false); }
+    if (!saved || saved.st !== st || Date.now() - saved.at > 15 * 60000) { toast("Phiên đăng nhập Zalo không hợp lệ hoặc đã hết hạn. Hãy thử lại."); return Promise.resolve(false); }
+    if (saved.mode === "link" && S.token) {
+      return api("zaloLink", S.token, code, saved.ver).then(function (r) {
+        toast("Đã liên kết Zalo" + (r && r.name ? " " + r.name : "") + ". Lần sau có thể đăng nhập bằng Zalo.");
+        return true;
+      }, function (e) { failToast(e, "Chưa liên kết được Zalo. Thử lại sau."); return true; });
+    }
+    els.sub.textContent = "Đang đăng nhập Zalo…";
+    return api("zaloLogin", code, saved.ver).then(function (r) {
+      if (r && r.token) {
+        S.token = r.token; S.me = r.id; lsSet(TK, r.token);
+        toast("Đăng nhập Zalo thành công.");
+        return true;
+      }
+      if (r && r.needCode) {
+        S.zaloTicket = r.ticket;
+        if (r.name && !$("jName").value) $("jName").value = r.name;
+        $("zaloPending").textContent = "Đã nhận tài khoản Zalo" + (r.name ? " " + r.name : "") + ". Lần đầu, hãy nhập mã gia đình và số điện thoại để hoàn tất. Từ lần sau chỉ cần bấm Đăng nhập bằng Zalo.";
+        $("zaloPending").hidden = false;
+      }
+      return false;
+    }, function (e) { toast(isUserMsg(e) ? errText(e) : "Chưa đăng nhập được bằng Zalo. Thử lại sau."); return false; });
+  }
+  function renderZaloCard() {
+    var on = !!S.zaloAppId && S.mode === "http";
+    $("zaloCard").hidden = !on;
+    if (!on) return;
+    var acts = $("zaloActs"); acts.innerHTML = "";
+    if (S.zaloLinked) {
+      $("zaloState").textContent = "Đã liên kết Zalo. Trên máy khác, chỉ cần bấm Đăng nhập bằng Zalo.";
+      acts.appendChild(h("button", { class: "btn", type: "button", text: "Bỏ liên kết", onclick: function () {
+        api("zaloUnlink", S.token).then(function () { toast("Đã bỏ liên kết Zalo."); return poll(); }).catch(function (e) { failToast(e, "Chưa bỏ được liên kết."); });
+      } }));
+    } else {
+      $("zaloState").textContent = "Liên kết tài khoản Zalo để lần sau đăng nhập nhanh, không cần nhập mã gia đình.";
+      acts.appendChild(h("button", { class: "btn zalo", type: "button", style: "width:auto", html: "Liên kết&nbsp;<b>Zalo</b>", onclick: function () { startZalo("link"); } }));
+    }
+  }
+  $("zaloBtn").addEventListener("click", function () { startZalo("login"); });
+
   /* ---------- cài app (PWA) — Android, iPhone/iPad (Safari, Chrome, Edge), máy tính ---------- */
   var installEvt = null, IB = "nhaminh.installHidden";
   var UA = navigator.userAgent || "";
@@ -1604,8 +1690,19 @@ var AUTO_DEMO = false;
     }
     if (!S.mode) { showSetup(); return; }
     S.token = lsGet(TK);
-    if (S.token) { openTab("chat"); poll(); } else showJoin();
-    updateInstallUI();
+    var start = function () {
+      if (S.token) { openTab("chat"); poll(); } else showJoin();
+      updateInstallUI();
+    };
+    if (S.mode !== "http") { start(); return; }
+    var hasCode = /[?&](code|error)=/.test(location.search);
+    if (!hasCode) start();
+    api("info").then(function (r) {
+      S.zaloAppId = (r && r.zaloAppId) || "";
+      $("zaloBox").hidden = !S.zaloAppId;
+      renderZaloCard();
+      return hasCode ? handleZaloReturn().then(start) : null;
+    }, function () { if (hasCode) start(); });
   }
   boot();
 })();
