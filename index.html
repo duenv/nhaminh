@@ -93,6 +93,11 @@ h2{margin:0 0 10px;font:600 18px/1.25 var(--font-display);text-wrap:balance}
 .row.grouped{margin-top:0}
 .row.mine{align-items:flex-end}
 .row.pending{opacity:.6}
+.row.failed .bubble{outline:2px solid var(--warn);outline-offset:1px}
+.row.failed .meta{opacity:1;font-weight:600}
+.notif-ask{flex:none;display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px 8px 8px 12px;border-radius:12px;background:var(--accent-soft);color:var(--ink);font-size:14px}
+.notif-ask span{flex:1;min-width:0}
+.notif-ask .btn{min-height:36px;padding-block:6px}
 .who{font-size:12.5px;font-weight:600;color:var(--c);margin:0 0 2px 12px}
 .bubble{max-width:min(80%,520px);min-width:0;padding:8px 12px 6px;border-radius:18px;background:var(--surface);border:1px solid var(--line)}
 .mine .bubble{background:var(--accent);color:var(--accent-ink);border-color:transparent;cursor:pointer}
@@ -325,6 +330,11 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
 
     <!-- Trò chuyện -->
     <section class="view" id="view-chat" aria-label="Trò chuyện" hidden>
+      <div class="notif-ask" id="notifAsk" hidden>
+        <span id="notifAskText">Bật thông báo để biết ngay khi có tin nhắn, cuộc gọi, kể cả lúc đã đóng app.</span>
+        <button class="btn primary" type="button" id="notifAskBtn">Bật</button>
+        <button class="ghost" type="button" id="notifAskX" aria-label="Để sau">Để sau</button>
+      </div>
       <div class="scroll" id="feedScroll">
         <div class="feed" id="feed"><div class="empty"><strong>Đang tải tin nhắn…</strong>Tin nhắn và ảnh của cả nhà sẽ hiện ở đây.</div></div>
       </div>
@@ -377,7 +387,7 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
       <div class="scroll"><div class="pad">
         <div>
           <h2>Gọi cho người nhà</h2>
-          <p class="hint" id="callHint">Gọi thoại và gọi video ngay trong app, miễn phí qua Wi-Fi hoặc 4G. Người nhận cần đang mở app để nghe chuông.</p>
+          <p class="hint" id="callHint">Gọi thoại và gọi video ngay trong app, miễn phí qua Wi-Fi hoặc 4G. Người nhận đang mở app sẽ nghe chuông ngay. Nếu đã bật thông báo, máy người nhận sẽ báo có cuộc gọi đến.</p>
         </div>
         <div class="banner" id="callBlocked" hidden></div>
         <div class="card group-call" id="groupCall" hidden>
@@ -411,6 +421,11 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
             <div class="form-end"><button class="btn primary" type="submit" id="pSave">Lưu hồ sơ</button></div>
           </form>
         </div>
+        <div class="card" id="notifCard" hidden>
+          <h2>Thông báo</h2>
+          <p class="hint" id="notifState" style="margin-bottom:12px"></p>
+          <div class="form-end" id="notifActs"></div>
+        </div>
         <div class="card" id="zaloCard" hidden>
           <h2>Đăng nhập bằng Zalo</h2>
           <p class="hint" id="zaloState" style="margin-bottom:12px"></p>
@@ -427,7 +442,7 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
         <div class="card">
           <h2>Cần biết</h2>
           <ul class="notes">
-            <li>App tự cập nhật tin mới mỗi vài giây khi đang mở. Muốn nghe chuông cuộc gọi, hãy để app mở trên màn hình.</li>
+            <li>Khi app đang mở, tin nhắn mới hiện ra sau 1–3 giây. Bật mục Thông báo ở trên để được báo tin nhắn và cuộc gọi cả khi đã đóng app.</li>
             <li>Lần gọi đầu, máy sẽ hỏi quyền dùng micro và camera. Hãy bấm Cho phép.</li>
             <li>Dữ liệu và ảnh nằm trong Google Drive của người cài app. Âm thanh và hình ảnh cuộc gọi đi thẳng giữa hai máy.</li>
           </ul>
@@ -497,7 +512,7 @@ var AUTO_DEMO = false;
   var STATUS = {}; STATUSES.forEach(function (s) { STATUS[s.k] = s; });
   var TABS = ["chat", "vi-tri", "goi", "ho-so"];
   var WD = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
-  var TK = "nhaminh.token", RK = "nhaminh.lastRead", AK = "nhaminh.api";
+  var TK = "nhaminh.token", RK = "nhaminh.lastRead", AK = "nhaminh.api", SK = "nhaminh.snap", NK = "nhaminh.notifAsk", PK = "nhaminh.push";
   var API_RE = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^\/\s]+|macros)\/s\/[A-Za-z0-9_-]+\/exec$/;
   var ICON = {
     voice: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
@@ -528,7 +543,8 @@ var AUTO_DEMO = false;
     view: "chat", lastRead: Number(lsGet(RK)) || 0,
     forceBottom: true, stick: true, preserveTop: false, selected: null, sending: false, profileDirty: false,
     photos: {}, photoReq: {}, photoQueue: [], photoBusy: 0, imgEls: {},
-    timer: null, fails: 0, polling: null, geo: null, seenCalls: {}
+    timer: null, fails: 0, polling: null, geo: null, seenCalls: {},
+    maxRow: 0, outbox: [], outBusy: false, alertReady: false, vapid: "", pushOn: false, pollCtl: null, pollStart: 0
   };
   var CALL = null;
 
@@ -626,8 +642,8 @@ var AUTO_DEMO = false;
   }
 
   /* ---------- kết nối máy chủ: Apps Script / trang web riêng / xem thử ---------- */
-  function api(fn) {
-    var args = [].slice.call(arguments, 1);
+  function api(fn) { return apiCall(fn, [].slice.call(arguments, 1), null); }
+  function apiCall(fn, args, signal) {
     if (S.mode === "demo") {
       return new Promise(function (resolve, reject) {
         setTimeout(function () {
@@ -643,7 +659,7 @@ var AUTO_DEMO = false;
       });
     }
     return fetch(S.api, {
-      method: "POST", redirect: "follow",
+      method: "POST", redirect: "follow", signal: signal || undefined,
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ fn: fn, args: args })
     }).then(function (r) {
@@ -713,6 +729,12 @@ var AUTO_DEMO = false;
     Object.keys(S.msgs).forEach(function (k) { var m = S.msgs[k]; if (m.from !== S.me && m.at > S.lastRead) n++; });
     var show = n > 0 && (S.view !== "chat" || document.hidden);
     els.badge.hidden = !show; els.badge.textContent = n > 99 ? "99+" : String(n);
+    if (!CALL) document.title = n > 0 && document.hidden ? "(" + n + ") " + ring.title : ring.title;
+    try {
+      if (n > 0 && navigator.setAppBadge) navigator.setAppBadge(n).catch(function () {});
+      else if (!n && navigator.clearAppBadge) navigator.clearAppBadge().catch(function () {});
+    } catch (e) {}
+    if (S.lastRead !== S.idbRead) { S.idbRead = S.lastRead; idbSet("lastRead", S.lastRead); }
   }
 
   /* ---------- hiển thị ---------- */
@@ -782,15 +804,21 @@ var AUTO_DEMO = false;
     }
     var mine = m.from === S.me;
     var grouped = last && last.kind !== "checkin" && last.kind !== "call" && last.from === m.from && m.at - last.at < 5 * 60000;
-    var row = h("div", { class: "row" + (mine ? " mine" : "") + (grouped ? " grouped" : "") + (m.pending ? " pending" : "") });
+    var row = h("div", { class: "row" + (mine ? " mine" : "") + (grouped ? " grouped" : "") + (m.pending ? " pending" : "") + (m.failed ? " failed" : "") });
     if (!mine && !grouped) row.appendChild(h("div", { class: "who", style: "--c:var(--m" + colorOf(m.from) + ")", text: nameOf(m.from) }));
     var b = h("div", { class: "bubble" + (m.photoId ? " has-img" : "") });
     if (m.photoId) b.appendChild(photoNode(m));
     if (m.text) b.appendChild(h("div", { class: "txt", text: m.text }));
-    b.appendChild(h("div", { class: "meta", text: m.pending ? "Đang gửi…" : hm(m.at) }));
+    b.appendChild(h("div", { class: "meta", text: m.pending ? "Đang gửi…" : m.failed ? "Chưa gửi được · chạm để gửi lại" : hm(m.at) }));
     if (mine && !m.pending) b.addEventListener("click", function () { S.selected = S.selected === m.id ? null : m.id; renderFeed(); });
     row.appendChild(b);
-    if (mine && S.selected === m.id) {
+    if (mine && m.failed && S.selected === m.id) {
+      row.appendChild(h("div", { class: "acts" },
+        h("button", { class: "btn primary", type: "button", text: "Gửi lại", onclick: function () {
+          S.selected = null; m.failed = false; m.pending = true; m.at = Date.now(); S.outbox.push(m.id); renderFeed(); pumpOutbox();
+        } }),
+        h("button", { class: "ghost", type: "button", text: "Xoá", onclick: function () { S.selected = null; delete S.msgs[m.id]; renderFeed(); } })));
+    } else if (mine && S.selected === m.id) {
       row.appendChild(h("div", { class: "acts" },
         h("span", { class: "muted", text: "Thu hồi tin này?" }),
         h("button", { class: "btn danger", type: "button", text: "Thu hồi", onclick: function () { recall(m); } }),
@@ -910,33 +938,128 @@ var AUTO_DEMO = false;
     S.rev = r.rev; S.me = r.me; S.myEmail = r.myEmail || ""; S.synced = true; S.zaloLinked = !!r.zaloLinked;
     if (r.config) S.config = r.config;
     var next = {}; (r.members || []).forEach(function (m) { next[m.id] = m; }); S.members = next;
-    Object.keys(S.msgs).forEach(function (k) { var m = S.msgs[k]; if (m.pending || (m.row || 0) >= r.firstRow) delete S.msgs[k]; });
-    (r.messages || []).forEach(function (m) { S.msgs[m.id] = m; });
-    if (S.oldestRow == null || r.firstRow < S.oldestRow) S.oldestRow = r.firstRow;
-    renderAll(); fillProfile(); renderZaloCard();
+    var fresh = [];
+    if (r.delta) {
+      (r.removed || []).forEach(function (id) { delete S.msgs[id]; });
+    } else {
+      Object.keys(S.msgs).forEach(function (k) { var m = S.msgs[k]; if (!m.pending && !m.failed && (m.row || 0) >= r.firstRow) delete S.msgs[k]; });
+      if (S.oldestRow == null || r.firstRow < S.oldestRow) S.oldestRow = r.firstRow;
+    }
+    (r.messages || []).forEach(function (m) {
+      if (m.cid && S.msgs[m.cid]) { delete S.msgs[m.cid]; S.outbox = S.outbox.filter(function (x) { return x !== m.cid; }); }
+      if (!S.msgs[m.id] && !(S.seenIds && S.seenIds[m.id])) fresh.push(m);
+      S.msgs[m.id] = m;
+    });
+    if (r.last) S.maxRow = r.last;
+    else S.maxRow = 0;
+    S.seenIds = {}; Object.keys(S.msgs).forEach(function (k) { S.seenIds[k] = 1; });
+    renderAll(); fillProfile(); renderZaloCard(); saveSnap();
+    if (S.alertReady) alertNew(fresh);
   }
-  function schedule() {
+  /* tiếng "ting" khi có tin mới lúc đang mở app (thông báo khi đóng app do service worker lo) */
+  function alertNew(list) {
+    var now = Date.now();
+    var mine = list.filter(function (m) {
+      if (now - m.at > 120000) return false;
+      if (m.kind === "call") return m.to === S.me && /^missed/.test(m.note || "");
+      return m.from !== S.me;
+    });
+    if (!mine.length || document.hidden || CALL) return;
+    var c = ring.ctx;
+    if (c && c.state === "running") {
+      var t = c.currentTime;
+      [[0, 1046], [0.11, 1318]].forEach(function (x) {
+        var o = c.createOscillator(), g = c.createGain();
+        o.frequency.value = x[1];
+        g.gain.setValueAtTime(0.0001, t + x[0]);
+        g.gain.exponentialRampToValueAtTime(0.12, t + x[0] + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + x[0] + 0.22);
+        o.connect(g); g.connect(c.destination); o.start(t + x[0]); o.stop(t + x[0] + 0.25);
+      });
+    }
+    if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) {} }
+  }
+  /* lưu bản sao tin gần nhất trên máy: mở app là thấy tin ngay, không phải chờ máy chủ */
+  function saveSnap() {
+    clearTimeout(S.snapT);
+    S.snapT = setTimeout(function () {
+      if (!S.token || S.mode !== "http") return;
+      var list = Object.keys(S.msgs).map(function (k) { return S.msgs[k]; })
+        .filter(function (m) { return !m.pending && !m.failed && m.row; })
+        .sort(function (a, b) { return a.row - b.row; }).slice(-120);
+      var o = { v: 2, tok: S.token.slice(-10), rev: S.rev, me: S.me, myEmail: S.myEmail, zaloLinked: S.zaloLinked,
+        members: S.members, msgs: list, config: S.config, maxRow: S.maxRow, firstRow: list.length ? list[0].row : S.oldestRow };
+      try { localStorage.setItem(SK, JSON.stringify(o)); } catch (e) { lsSet(SK, null); }
+    }, 800);
+  }
+  function loadSnap() {
+    try {
+      var o = JSON.parse(lsGet(SK) || "null");
+      if (!o || o.v !== 2 || !S.token || o.tok !== S.token.slice(-10)) return false;
+      S.rev = o.rev; S.me = o.me; S.myEmail = o.myEmail || ""; S.zaloLinked = !!o.zaloLinked; S.members = o.members || {};
+      S.config = o.config || null; S.maxRow = o.maxRow || 0; S.oldestRow = o.firstRow || null; S.msgs = {};
+      (o.msgs || []).forEach(function (m) { S.msgs[m.id] = m; });
+      S.seenIds = {}; Object.keys(S.msgs).forEach(function (k) { S.seenIds[k] = 1; });
+      S.synced = true;
+      return true;
+    } catch (e) { return false; }
+  }
+  function schedule(quick) {
     clearTimeout(S.timer);
     if (!S.token) return;
-    var wait = document.hidden ? 15000 : Math.min(3500 * (1 + S.fails), 30000);
+    var wait;
+    if (S.fails) wait = Math.min(2000 * S.fails, 30000);
+    else if (document.hidden) wait = 30000;
+    else if (S.mode === "demo") wait = 2500;
+    else wait = quick ? 250 : 3000;
     S.timer = setTimeout(poll, wait);
   }
   function poll() {
     if (!S.token) return Promise.resolve();
     if (S.polling) return S.polling;
     clearTimeout(S.timer);
-    S.polling = api("sync", S.token, S.rev).then(function (r) {
+    var vis = !document.hidden;
+    var hold = vis && S.synced && S.mode !== "demo";
+    var ctl = null, quick = false, started = Date.now();
+    if (S.mode === "http" && window.AbortController) {
+      ctl = new AbortController(); S.pollCtl = ctl;
+      setTimeout(function () { ctl.abort(); }, hold ? 45000 : 25000);
+    }
+    S.pollStart = started;
+    S.polling = apiCall("sync", [S.token, S.rev, S.maxRow || 0, { wait: hold, vis: vis }], ctl && ctl.signal).then(function (r) {
       if (!r.same) applySync(r);
       handleIncoming(r.call);
-      S.fails = 0; setBanner("");
+      S.fails = 0; setBanner(""); S.alertReady = true;
+      // máy chủ có giữ kết nối chờ tin (V2.4) thì hỏi lại ngay; máy chủ cũ trả về tức thì thì giãn ra 3 giây
+      quick = !r.same || (hold && Date.now() - started > 4000);
+      if (r.call) quick = false;
     }).catch(function (e) {
+      if (e && e.name === "AbortError") { quick = true; return; }
       if (isAuth(e)) { logout("Phiên đăng nhập trên máy này đã hết. Hãy vào lại nhóm."); return; }
       S.fails++;
       if (S.fails >= 3) setBanner(isUserMsg(e) ? errText(e) : "Mất kết nối. App sẽ tự thử lại.");
-    }).then(function () { S.polling = null; schedule(); });
+    }).then(function () {
+      if (S.pollCtl === ctl) S.pollCtl = null;
+      S.polling = null; schedule(quick);
+    });
     return S.polling;
   }
-  document.addEventListener("visibilitychange", function () { if (!document.hidden && S.token) { poll(); markRead(); } });
+  function wakeUp() {
+    if (!S.token) return;
+    // lượt hỏi đang treo từ lúc máy ngủ có thể đã chết: huỷ và hỏi lại ngay
+    if (S.polling && S.pollCtl && Date.now() - S.pollStart > 2500) S.pollCtl.abort();
+    else poll();
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (!S.token) return;
+    if (!document.hidden) { wakeUp(); markRead(); return; }
+    markRead();
+    if (S.mode === "http" && navigator.sendBeacon) {
+      try { navigator.sendBeacon(S.api, new Blob([JSON.stringify({ fn: "away", args: [S.token] })], { type: "text/plain;charset=utf-8" })); } catch (e) {}
+    }
+  });
+  window.addEventListener("online", wakeUp);
+  window.addEventListener("pageshow", function (e) { if (e.persisted) wakeUp(); });
 
   function loadOlder() {
     if (S.loadingOlder || !S.oldestRow || S.oldestRow <= 2) return;
@@ -956,15 +1079,33 @@ var AUTO_DEMO = false;
     if (e.key === "Enter" && !e.shiftKey && !coarse && !e.isComposing) { e.preventDefault(); submitText(); }
   });
   els.composer.addEventListener("submit", function (e) { e.preventDefault(); submitText(); });
+  function tmpId() { return "tmp-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function submitText() {
     var t = els.input.value.trim();
-    if (!t || S.sending) return;
-    S.sending = true;
-    var tmp = { id: "tmp-" + Date.now(), at: Date.now(), from: S.me, kind: "text", text: t, pending: true, row: 1e12 };
-    S.msgs[tmp.id] = tmp; els.input.value = ""; autosize(); S.forceBottom = true; renderFeed();
-    api("send", S.token, t).then(function () { return poll(); }).catch(function (e) {
-      delete S.msgs[tmp.id]; els.input.value = t; autosize(); renderFeed(); failToast(e, "Chưa gửi được. Kiểm tra mạng rồi thử lại.");
-    }).then(function () { S.sending = false; els.input.focus(); });
+    if (!t) return;
+    var tmp = { id: tmpId(), at: Date.now(), from: S.me, kind: "text", text: t, pending: true, row: 1e12 };
+    S.msgs[tmp.id] = tmp; S.outbox.push(tmp.id);
+    els.input.value = ""; autosize(); S.forceBottom = true; renderFeed(); els.input.focus();
+    pumpOutbox();
+  }
+  /* gửi lần lượt từng tin trong hàng đợi — gõ liên tiếp nhiều tin không phải chờ */
+  function pumpOutbox() {
+    if (S.outBusy || !S.outbox.length || !S.token) return;
+    var id = S.outbox[0], m = S.msgs[id];
+    if (!m || !m.pending) { S.outbox.shift(); pumpOutbox(); return; }
+    S.outBusy = true;
+    api("send", S.token, m.text, id).then(function (r) {
+      S.outbox = S.outbox.filter(function (x) { return x !== id; });
+      delete S.msgs[id];
+      if (r && r.id) S.msgs[r.id] = r; else poll();
+      renderFeed();
+    }).catch(function (e) {
+      if (isAuth(e)) { logout("Phiên đăng nhập trên máy này đã hết. Hãy vào lại nhóm."); return; }
+      S.outbox.forEach(function (x) { var q = S.msgs[x]; if (q) { q.pending = false; q.failed = true; } });
+      S.outbox = [];
+      toast(isUserMsg(e) ? errText(e) : "Chưa gửi được. Kiểm tra mạng rồi chạm vào tin để gửi lại.");
+      renderFeed();
+    }).then(function () { S.outBusy = false; pumpOutbox(); });
   }
   function compress(file) {
     return new Promise(function (resolve, reject) {
@@ -991,9 +1132,10 @@ var AUTO_DEMO = false;
     els.uploading.hidden = false; els.photoBtn.disabled = true;
     var cap = els.input.value.trim();
     compress(f).then(function (dataUrl) {
-      return api("sendPhoto", S.token, dataUrl, cap).then(function () {
+      return api("sendPhoto", S.token, dataUrl, cap, tmpId()).then(function (r) {
         if (els.input.value.trim() === cap) { els.input.value = ""; autosize(); }
-        S.forceBottom = true; return poll();
+        S.forceBottom = true;
+        if (r && r.id) { S.msgs[r.id] = r; renderFeed(); } else return poll();
       });
     }, function () { toast("Không đọc được ảnh này. Hãy chọn ảnh JPG hoặc PNG."); })
       .catch(function (e) { failToast(e, "Chưa gửi được ảnh. Thử lại sau."); })
@@ -1351,6 +1493,7 @@ var AUTO_DEMO = false;
     api("join", $("jCode").value.trim(), profile).then(function (r) {
       S.token = r.token; S.me = r.id; if (S.mode !== "demo") lsSet(TK, r.token);
       if (S.zaloTicket) { S.zaloTicket = null; $("zaloPending").hidden = true; }
+      setTimeout(refreshPush, 0);
       toast(r.returning ? "Chào mừng " + profile.name + " quay lại." : "Đã vào nhóm. Chào " + profile.name + "!");
       openTab("chat"); updateInstallUI(); return poll();
     }).catch(function (e) { toast(isUserMsg(e) ? errText(e) : "Chưa vào được nhóm. Kiểm tra mạng và địa chỉ máy chủ."); })
@@ -1381,6 +1524,8 @@ var AUTO_DEMO = false;
     if (CALL) endCallLocal("");
     clearTimeout(S.timer);
     var wasDemo = S.mode === "demo";
+    if (!wasDemo) { lsSet(SK, null); lsSet(PK, null); dropPush(S.token); }
+    S.outbox = []; S.maxRow = 0; S.alertReady = false; S.seenIds = {};
     S.token = null; S.me = null; S.rev = ""; S.members = {}; S.msgs = {}; S.oldestRow = null; S.synced = false;
     S.photos = {}; S.photoReq = {}; S.imgEls = {}; S.photoQueue = [];
     if (!wasDemo) lsSet(TK, null);
@@ -1580,6 +1725,132 @@ var AUTO_DEMO = false;
   }
   $("zaloBtn").addEventListener("click", function () { startZalo("login"); });
 
+  /* ---------- thông báo đẩy (Web Push) ---------- */
+  function idb() {
+    return new Promise(function (res, rej) {
+      var r = indexedDB.open("nhaminh", 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore("kv"); };
+      r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); };
+    });
+  }
+  function idbSet(k, v) {
+    if (!window.indexedDB || S.mode !== "http") return Promise.resolve();
+    return idb().then(function (d) {
+      return new Promise(function (res) {
+        var tx = d.transaction("kv", "readwrite");
+        if (v == null) tx.objectStore("kv").delete(k); else tx.objectStore("kv").put(v, k);
+        tx.oncomplete = tx.onerror = function () { res(); };
+      });
+    }).catch(function () {});
+  }
+  function pushSupported() {
+    return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
+  }
+  function pushState() {
+    if (S.mode !== "http" || !S.token || !S.vapid) return "na";
+    if (isIOS && !isStandalone()) return iosVer >= 16.4 ? "ios-install" : "ios-old";
+    if (!pushSupported()) return "unsupported";
+    if (Notification.permission === "denied") return "denied";
+    if (Notification.permission === "granted" && S.pushOn) return "on";
+    return "off";
+  }
+  function renderNotif() {
+    var st = pushState();
+    $("notifCard").hidden = st === "na";
+    var acts = $("notifActs"); acts.innerHTML = "";
+    var text = {
+      on: "Đã bật trên máy này. Máy sẽ báo khi có tin nhắn, cuộc gọi hoặc người nhà cần giúp đỡ, kể cả khi đã đóng app.",
+      off: "Chưa bật. Bật để được báo tin nhắn và cuộc gọi khi đã đóng app.",
+      denied: "Máy đang chặn thông báo của Nhà Mình. Vào cài đặt của trình duyệt (hoặc Cài đặt → Thông báo trên điện thoại), cho phép Nhà Mình, rồi mở lại app.",
+      "ios-install": "Trên iPhone/iPad, chỉ app đã thêm ra màn hình chính mới nhận được thông báo. Hãy cài app ra màn hình chính, mở từ biểu tượng, rồi bật thông báo tại đây.",
+      "ios-old": "iPhone cần iOS 16.4 trở lên mới nhận được thông báo. Hãy cập nhật iOS trong Cài đặt → Cài đặt chung.",
+      unsupported: "Trình duyệt này chưa hỗ trợ thông báo. Trên Android hãy dùng Chrome; trên iPhone hãy cài app ra màn hình chính."
+    }[st] || "";
+    $("notifState").textContent = text;
+    if (st === "off") acts.appendChild(h("button", { class: "btn primary", type: "button", text: "Bật thông báo", onclick: enablePush }));
+    if (st === "on") acts.appendChild(h("button", { class: "btn", type: "button", text: "Gửi thử", onclick: function () { testNotif(); } }));
+    if (st === "ios-install") acts.appendChild(h("button", { class: "btn primary", type: "button", text: "Cách cài app", onclick: openInstall }));
+    var ask = (st === "off" || st === "ios-install") && lsGet(NK) !== "1";
+    $("notifAsk").hidden = !ask;
+    $("notifAskBtn").textContent = st === "ios-install" ? "Cách cài" : "Bật";
+    $("notifAskText").textContent = st === "ios-install"
+      ? "Muốn được báo tin nhắn, cuộc gọi khi đóng app: hãy cài app ra màn hình chính."
+      : "Bật thông báo để biết ngay khi có tin nhắn, cuộc gọi, kể cả lúc đã đóng app.";
+  }
+  function b64uToBytes(s) {
+    var b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+    var out = new Uint8Array(b.length);
+    for (var i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
+    return out;
+  }
+  function enablePush() {
+    if (!pushSupported()) { renderNotif(); return; }
+    var fired = false;
+    var done = function (p) {
+      if (fired) return; fired = true;
+      if (p === "granted") { subscribePush(true); return; }
+      renderNotif();
+      toast(p === "denied" ? "Bạn đã chặn thông báo. Có thể mở lại trong cài đặt trình duyệt." : "Chưa bật thông báo.");
+    };
+    try {
+      var r = Notification.requestPermission(done);
+      if (r && r.then) r.then(done);
+    } catch (e) { toast("Chưa bật được thông báo trên máy này."); }
+  }
+  function subscribePush(announce) {
+    if (!pushSupported() || !S.vapid || !S.token) return Promise.resolve();
+    var key = S.vapid;
+    return navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.getSubscription().then(function (sub) {
+        if (sub && lsGet(PK) && lsGet(PK).split("|")[0] !== key) return sub.unsubscribe().then(function () { return null; });
+        return sub;
+      }).then(function (sub) {
+        return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(key) });
+      });
+    }).then(function (sub) {
+      return api("pushSubscribe", S.token, JSON.parse(JSON.stringify(sub)), location.origin).then(function () {
+        S.pushOn = true; lsSet(PK, key + "|" + Date.now());
+        idbSet("cfg", { api: S.api, token: S.token, vapid: key });
+        renderNotif();
+        if (announce) toast("Đã bật thông báo trên máy này.");
+      });
+    }).catch(function (e) {
+      S.pushOn = false; renderNotif();
+      if (announce) failToast(e, "Chưa bật được thông báo trên máy này. Thử lại sau.");
+    });
+  }
+  function refreshPush() {
+    if (pushState() === "na" || !pushSupported() || Notification.permission !== "granted") { renderNotif(); return; }
+    var saved = (lsGet(PK) || "").split("|");
+    S.pushOn = saved[0] === S.vapid;
+    renderNotif();
+    if (!S.pushOn || Date.now() - Number(saved[1] || 0) > 12 * 3600000) subscribePush(false);
+    else idbSet("cfg", { api: S.api, token: S.token, vapid: S.vapid });
+  }
+  function dropPush(token) {
+    S.pushOn = false;
+    idbSet("cfg", null);
+    if (!pushSupported() || !token) return;
+    navigator.serviceWorker.getRegistration().then(function (reg) {
+      return reg && reg.pushManager.getSubscription();
+    }).then(function (sub) {
+      if (!sub) return;
+      var ep = sub.endpoint;
+      sub.unsubscribe().catch(function () {});
+      if (S.api) api("pushUnsubscribe", token, ep).catch(function () {});
+    }).catch(function () {});
+  }
+  function testNotif() {
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.showNotification("Nhà Mình", { body: "Thông báo đã hoạt động trên máy này.", icon: "icon-192.png", badge: "icon-192.png", tag: "nm-test" });
+    }).then(function () { toast("Đã gửi thông báo thử."); }, function () { toast("Máy chưa hiện được thông báo."); });
+  }
+  $("notifAskBtn").addEventListener("click", function () { if (pushState() === "ios-install") openInstall(); else enablePush(); });
+  $("notifAskX").addEventListener("click", function () { lsSet(NK, "1"); renderNotif(); });
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", function (e) { if (e.data && e.data.t === "push") wakeUp(); });
+  }
+
   /* ---------- cài app (PWA) — Android, iPhone/iPad (Safari, Chrome, Edge), máy tính ---------- */
   var installEvt = null, IB = "nhaminh.installHidden";
   var UA = navigator.userAgent || "";
@@ -1690,6 +1961,7 @@ var AUTO_DEMO = false;
     }
     if (!S.mode) { showSetup(); return; }
     S.token = lsGet(TK);
+    if (S.token && S.mode === "http" && loadSnap()) { renderAll(); fillProfile(); }
     var start = function () {
       if (S.token) { openTab("chat"); poll(); } else showJoin();
       updateInstallUI();
@@ -1699,8 +1971,9 @@ var AUTO_DEMO = false;
     if (!hasCode) start();
     api("info").then(function (r) {
       S.zaloAppId = (r && r.zaloAppId) || "";
+      S.vapid = (r && r.vapidKey) || "";
       $("zaloBox").hidden = !S.zaloAppId;
-      renderZaloCard();
+      renderZaloCard(); refreshPush();
       return hasCode ? handleZaloReturn().then(start) : null;
     }, function () { if (hasCode) start(); });
   }
