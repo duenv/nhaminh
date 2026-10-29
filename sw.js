@@ -11,7 +11,8 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== self.location.origin) return;
-  e.respondWith(fetch(e.request).then(r => {
+  // trang chính luôn hỏi lại máy chủ (cache: 'no-cache') để bản mới có hiệu lực ngay
+  e.respondWith(fetch(e.request, e.request.mode === 'navigate' ? { cache: 'no-cache' } : undefined).then(r => {
     if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
     return r;
   }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('./'))));
