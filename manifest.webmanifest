@@ -1,0 +1,17 @@
+{
+  "name": "Nhà Mình",
+  "short_name": "Nhà Mình",
+  "description": "Nhắn tin, gọi thoại, gọi video và chia sẻ vị trí trong gia đình",
+  "lang": "vi",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0D6858",
+  "theme_color": "#0D6858",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

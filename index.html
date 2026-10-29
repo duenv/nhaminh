@@ -9,6 +9,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Nhà Mình">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Lora:wght@600;700&display=swap">
@@ -376,9 +379,10 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
         </div>
         <div class="card">
           <h2>Đặt ra màn hình chính</h2>
+          <div class="form-end" id="installBox" hidden style="margin-bottom:12px"><button class="btn primary" type="button" id="installBtn">Cài app lên máy này</button></div>
           <ul class="notes">
             <li>iPhone: mở link bằng Safari, bấm Chia sẻ, chọn Thêm vào MH chính.</li>
-            <li>Android: mở link bằng Chrome, bấm dấu ba chấm, chọn Thêm vào màn hình chính.</li>
+            <li>Android: mở link bằng Chrome, bấm dấu ba chấm, chọn Cài đặt và tạo lối tắt, rồi chọn Cài đặt.</li>
           </ul>
         </div>
         <div class="card">
@@ -434,7 +438,7 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
 /* ===== CẤU HÌNH =====
  * API_URL: địa chỉ ứng dụng web Apps Script (…/exec). Có thể để trống và gửi cho người nhà link dạng
  *          https://ten.github.io/nhaminh/?api=<địa chỉ /exec> — app tự nhớ địa chỉ trên từng máy. */
-var API_URL = "";
+var API_URL = "https://script.google.com/macros/s/AKfycbzWcB_dcrHVaJG3cg96tB5BlMFpDmJjK9ci2TXgUrnGrqAwb6cmvlrOp7Oinr5Rm4VQ/exec";
 var AUTO_DEMO = false;
 
 (function () {
@@ -1455,6 +1459,21 @@ var AUTO_DEMO = false;
     toast("Mẹ sẽ gọi cho bạn sau 2 giây…");
     setTimeout(poll, 2000);
   });
+
+  /* ---------- cài app (PWA) ---------- */
+  var installEvt = null;
+  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); installEvt = e; $("installBox").hidden = false; });
+  window.addEventListener("appinstalled", function () { installEvt = null; $("installBox").hidden = true; toast("Đã cài Nhà Mình lên máy."); });
+  $("installBtn").addEventListener("click", function () {
+    if (!installEvt) return;
+    installEvt.prompt();
+    installEvt.userChoice.then(function () { installEvt = null; $("installBox").hidden = true; });
+  });
+  try {
+    if ("serviceWorker" in navigator && location.protocol === "https:" && !AUTO_DEMO && !(window.google && window.google.script)) {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    }
+  } catch (e) {}
 
   /* ---------- khởi động ---------- */
   function boot() {
