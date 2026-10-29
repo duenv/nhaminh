@@ -1,7 +1,7 @@
-/* Nhà Mình — service worker V2.4
+/* Nhà Mình — service worker V2.5
    1. Cho phép cài app và mở được giao diện khi mạng chập chờn (chỉ lưu tệp của chính trang này).
    2. Nhận thông báo đẩy: máy chủ chỉ "gõ cửa", service worker tự hỏi máy chủ gia đình nội dung tin rồi hiện thông báo. */
-const CACHE = 'nhaminh-v2-4';
+const CACHE = 'nhaminh-v2-5';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './manifest.webmanifest', './icon-192.png', './icon-512.png'])).then(() => self.skipWaiting()));
 });
@@ -55,35 +55,51 @@ async function onPush() {
   const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   const open = wins.some(c => c.visibilityState === 'visible' && c.focused);
   wins.forEach(c => c.postMessage({ t: 'push' }));   // trang còn chạy ngầm thì cập nhật tin ngay
-  if (open && !IOS) return;   // app đang mở trên màn hình: trang tự hiện tin, không cần thông báo
+  if (open && !IOS) return;   // app đang mở trên màn hình: trang tự hiện tin và kêu "ting"
   const cfg = await idbGet('cfg');
   let r = null;
   if (cfg && cfg.api && cfg.token) {
-    const since = Math.max(Number(await idbGet('lastAt')) || 0, Number(await idbGet('lastRead')) || 0);
-    try { r = await ask(cfg, 'peek', [cfg.token, since]); } catch (err) { r = null; }
+    // đếm từ lần đọc cuối trên máy này; máy mới chưa đọc lần nào thì chỉ tính 1 ngày gần nhất
+    const read = Number(await idbGet('lastRead')) || (Date.now() - 86400000);
+    const shown = Math.max(read, Number(await idbGet('lastAt')) || 0);
+    try { r = await ask(cfg, 'peek', [cfg.token, read, shown]); } catch (err) { r = null; }
   }
-  const base = { icon: 'icon-192.png', badge: 'icon-192.png', data: { url: self.registration.scope } };
+  const base = { icon: 'icon-192.png', badge: 'icon-192.png', data: { url: self.registration.scope }, timestamp: Date.now(), silent: false };
   if (r && r.call) {
-    return self.registration.showNotification('📞 ' + r.call.from + ' đang gọi ' + (r.call.kind === 'video' ? 'video' : 'thoại'),
-      Object.assign(base, { body: 'Chạm để mở Nhà Mình và nghe máy', tag: 'nm-call', renotify: true, requireInteraction: true, vibrate: [400, 200, 400, 200, 400] }));
+    return self.registration.showNotification('📞 ' + r.call.from + ' đang gọi ' + (r.call.kind === 'video' ? 'video' : 'thoại') + '…',
+      Object.assign(base, { body: 'Chạm để mở Nhà Mình và nghe máy', tag: 'nm-call', renotify: true, requireInteraction: true,
+        vibrate: [1000, 400, 1000, 400, 1000, 400, 1000] }));
   }
+  if (r) await closeTag('nm-call');   // hết đổ chuông: bỏ thông báo "đang gọi"
+  try {
+    if (r && self.navigator.setAppBadge) await (r.count ? self.navigator.setAppBadge(r.count) : self.navigator.clearAppBadge());
+  } catch (err) {}
   if (r && r.count && r.items && r.items.length) {
-    const items = r.items;
+    const items = r.items, n = r.count, fresh = r.fresh == null ? n : r.fresh;
     await idbSet('lastAt', items[items.length - 1].at);
-    try { if (self.navigator.setAppBadge) await self.navigator.setAppBadge(r.count); } catch (err) {}
     const urgent = items.filter(i => i.urgent).pop();
     const senders = items.map(i => i.from).filter((x, i, a) => a.indexOf(x) === i);
+    const more = n > items.length ? '\n… và ' + (n - items.length) + ' tin khác' : '';
     let title, body;
-    if (urgent) { title = '⚠️ ' + urgent.from + ' cần giúp đỡ'; body = urgent.text; }
-    else if (senders.length === 1) { title = senders[0] + (r.count > 1 ? ' · ' + r.count + ' tin mới' : ''); body = items.map(i => i.text).join('\n'); }
-    else { title = 'Nhà Mình · ' + r.count + ' tin mới'; body = items.map(i => i.from + ': ' + i.text).join('\n'); }
-    return self.registration.showNotification(title, Object.assign(base, { body: body, tag: 'nm-msg', renotify: true, vibrate: [120, 60, 120] }));
+    if (urgent) { title = '🆘 ' + urgent.from + ' cần giúp đỡ'; body = urgent.text + (n > 1 ? '\n(' + n + ' tin chưa đọc)' : ''); }
+    else if (n === 1) { title = items[0].from; body = items[0].text; }
+    else if (senders.length === 1) { title = senders[0] + ' · ' + n + ' tin nhắn mới'; body = items.map(i => i.text).join('\n') + more; }
+    else { title = 'Nhà Mình · ' + n + ' tin nhắn mới'; body = items.map(i => i.from + ': ' + i.text).join('\n') + more; }
+    return self.registration.showNotification(title, Object.assign(base, {
+      body: body, tag: urgent ? 'nm-help' : 'nm-msg', renotify: fresh > 0, silent: fresh === 0,
+      requireInteraction: !!urgent,
+      vibrate: urgent ? [500, 200, 500, 200, 500, 200, 500] : [300, 150, 300, 150, 300]
+    }));
   }
   if (r && !r.count) {
+    await closeTag('nm-msg');
     if (open) return;
     return self.registration.showNotification('Nhà Mình', Object.assign(base, { body: 'Có cập nhật mới trong nhóm gia đình', tag: 'nm-msg', silent: true }));
   }
-  return self.registration.showNotification('Nhà Mình', Object.assign(base, { body: 'Có tin nhắn mới. Chạm để xem.', tag: 'nm-msg', renotify: true }));
+  return self.registration.showNotification('Nhà Mình', Object.assign(base, { body: 'Có tin nhắn mới. Chạm để xem.', tag: 'nm-msg', renotify: true, vibrate: [300, 150, 300] }));
+}
+async function closeTag(tag) {
+  try { (await self.registration.getNotifications({ tag: tag })).forEach(n => n.close()); } catch (err) {}
 }
 
 self.addEventListener('notificationclick', e => {

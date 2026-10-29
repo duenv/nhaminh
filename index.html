@@ -95,6 +95,8 @@ h2{margin:0 0 10px;font:600 18px/1.25 var(--font-display);text-wrap:balance}
 .row.pending{opacity:.6}
 .row.failed .bubble{outline:2px solid var(--warn);outline-offset:1px}
 .row.failed .meta{opacity:1;font-weight:600}
+.notif-tips{margin:10px 0 0;padding-left:18px;color:var(--muted);font-size:13.5px}
+.notif-tips li{margin:3px 0}
 .notif-ask{flex:none;display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px 8px 8px 12px;border-radius:12px;background:var(--accent-soft);color:var(--ink);font-size:14px}
 .notif-ask span{flex:1;min-width:0}
 .notif-ask .btn{min-height:36px;padding-block:6px}
@@ -425,6 +427,12 @@ ul.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
           <h2>Thông báo</h2>
           <p class="hint" id="notifState" style="margin-bottom:12px"></p>
           <div class="form-end" id="notifActs"></div>
+          <ul class="notif-tips" id="notifTips" hidden></ul>
+        </div>
+        <div class="card" id="tgCard" hidden>
+          <h2>Báo qua Telegram (dự phòng)</h2>
+          <p class="hint" id="tgState" style="margin-bottom:12px"></p>
+          <div class="form-end" id="tgActs"></div>
         </div>
         <div class="card" id="zaloCard" hidden>
           <h2>Đăng nhập bằng Zalo</h2>
@@ -735,6 +743,13 @@ var AUTO_DEMO = false;
       else if (!n && navigator.clearAppBadge) navigator.clearAppBadge().catch(function () {});
     } catch (e) {}
     if (S.lastRead !== S.idbRead) { S.idbRead = S.lastRead; idbSet("lastRead", S.lastRead); }
+    if (!n && !document.hidden && S.pushOn && navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistration().then(function (reg) {
+        return reg && reg.getNotifications ? reg.getNotifications() : [];
+      }).then(function (list) {
+        (list || []).forEach(function (x) { if (x.tag === "nm-msg" || x.tag === "nm-help") x.close(); });
+      }).catch(function () {});
+    }
   }
 
   /* ---------- hiển thị ---------- */
@@ -936,6 +951,7 @@ var AUTO_DEMO = false;
   /* ---------- đồng bộ ---------- */
   function applySync(r) {
     S.rev = r.rev; S.me = r.me; S.myEmail = r.myEmail || ""; S.synced = true; S.zaloLinked = !!r.zaloLinked;
+    S.tgLinked = !!r.tgLinked; if (S.tgWait && S.tgLinked) { S.tgWait = 0; toast("Đã kết nối Telegram."); }
     if (r.config) S.config = r.config;
     var next = {}; (r.members || []).forEach(function (m) { next[m.id] = m; }); S.members = next;
     var fresh = [];
@@ -953,7 +969,7 @@ var AUTO_DEMO = false;
     if (r.last) S.maxRow = r.last;
     else S.maxRow = 0;
     S.seenIds = {}; Object.keys(S.msgs).forEach(function (k) { S.seenIds[k] = 1; });
-    renderAll(); fillProfile(); renderZaloCard(); saveSnap();
+    renderAll(); fillProfile(); renderZaloCard(); renderTg(); saveSnap();
     if (S.alertReady) alertNew(fresh);
   }
   /* tiếng "ting" khi có tin mới lúc đang mở app (thông báo khi đóng app do service worker lo) */
@@ -1767,6 +1783,20 @@ var AUTO_DEMO = false;
       unsupported: "Trình duyệt này chưa hỗ trợ thông báo. Trên Android hãy dùng Chrome; trên iPhone hãy cài app ra màn hình chính."
     }[st] || "";
     $("notifState").textContent = text;
+    var tips = $("notifTips"); tips.innerHTML = "";
+    var addTip = function (t) { tips.appendChild(h("li", { text: t })); };
+    if (st === "on" || st === "off") {
+      if (isAndroid) {
+        addTip("Muốn chuông to, rung mạnh: Cài đặt điện thoại → Ứng dụng → " + (isStandalone() ? "Nhà Mình" : "Chrome") + " → Thông báo → bật Âm thanh, Rung, Hiện trên màn hình; có thể chọn nhạc chuông riêng.");
+        addTip("Máy Xiaomi, Oppo, Vivo, Samsung: tắt Tối ưu hoá pin cho " + (isStandalone() ? "Nhà Mình và " : "") + "Chrome, bật Tự khởi chạy, để thông báo không bị trễ.");
+      } else if (isIOS) {
+        addTip("Cài đặt → Thông báo → Nhà Mình: bật Âm thanh, Biểu tượng (số tin trên icon) và Thông báo nhạy cảm thời gian.");
+        addTip("Khi bật chế độ Tập trung/Không làm phiền, hãy thêm Nhà Mình vào danh sách được phép.");
+      }
+      addTip("Thông báo hiện số tin chưa đọc. Cuộc gọi đến kêu và rung lặp lại khoảng 6 giây một lần trong 45 giây.");
+    }
+    if (S.tgBot && st !== "on" && st !== "na") addTip("Máy này chưa nhận được thông báo của trình duyệt? Dùng mục Báo qua Telegram bên dưới.");
+    tips.hidden = !tips.children.length;
     if (st === "off") acts.appendChild(h("button", { class: "btn primary", type: "button", text: "Bật thông báo", onclick: enablePush }));
     if (st === "on") acts.appendChild(h("button", { class: "btn", type: "button", text: "Gửi thử", onclick: function () { testNotif(); } }));
     if (st === "ios-install") acts.appendChild(h("button", { class: "btn primary", type: "button", text: "Cách cài app", onclick: openInstall }));
@@ -1811,6 +1841,8 @@ var AUTO_DEMO = false;
       return api("pushSubscribe", S.token, JSON.parse(JSON.stringify(sub)), location.origin).then(function () {
         S.pushOn = true; lsSet(PK, key + "|" + Date.now());
         idbSet("cfg", { api: S.api, token: S.token, vapid: key });
+        if (!S.lastRead) { S.lastRead = Date.now(); lsSet(RK, String(S.lastRead)); }
+        S.idbRead = S.lastRead; idbSet("lastRead", S.lastRead);
         renderNotif();
         if (announce) toast("Đã bật thông báo trên máy này.");
       });
@@ -1850,6 +1882,46 @@ var AUTO_DEMO = false;
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("message", function (e) { if (e.data && e.data.t === "push") wakeUp(); });
   }
+
+  /* ---------- kênh dự phòng Telegram ---------- */
+  function renderTg() {
+    var on = !!S.tgBot && S.mode === "http" && !!S.token;
+    $("tgCard").hidden = !on;
+    if (!on) return;
+    var acts = $("tgActs"); acts.innerHTML = "";
+    if (S.tgLinked) {
+      $("tgState").textContent = "Đã kết nối. Khi bạn không mở app, tin nhắn, cuộc gọi và báo khẩn sẽ được gửi vào Telegram (bot @" + S.tgBot + "). Telegram tự kêu chuông, rung và đếm số tin chưa đọc.";
+      acts.appendChild(h("button", { class: "btn", type: "button", text: "Bỏ kết nối", onclick: function () {
+        api("tgUnlink", S.token).then(function () { S.tgLinked = false; renderTg(); toast("Đã bỏ kết nối Telegram."); }).catch(function (e) { failToast(e, "Chưa bỏ được kết nối."); });
+      } }));
+      return;
+    }
+    $("tgState").textContent = S.tgWait
+      ? "Trong Telegram, bấm Bắt đầu (Start), rồi quay lại đây. App sẽ tự kiểm tra."
+      : "Dành cho máy không nhận được thông báo của trình duyệt (iPhone chưa cài app, iOS cũ, máy hay tắt Chrome chạy ngầm). Cần cài ứng dụng Telegram.";
+    acts.appendChild(h("button", { class: "btn primary", type: "button", text: S.tgWait ? "Mở lại Telegram" : "Kết nối Telegram", onclick: startTg }));
+    if (S.tgWait) acts.appendChild(h("button", { class: "btn", type: "button", text: "Tôi đã bấm Start", onclick: function () { checkTg(true); } }));
+  }
+  function startTg() {
+    var w = null;
+    try { w = window.open("", "_blank"); } catch (e) {}
+    api("tgStart", S.token, location.origin + location.pathname).then(function (r) {
+      S.tgWait = Date.now(); renderTg();
+      if (w && !w.closed) w.location.href = r.url; else location.href = r.url;
+    }).catch(function (e) { if (w) w.close(); failToast(e, "Chưa kết nối được Telegram. Thử lại sau."); });
+  }
+  function checkTg(manual) {
+    if (!S.tgWait || S.tgChecking) return;
+    if (Date.now() - S.tgWait > 30 * 60000) { S.tgWait = 0; renderTg(); return; }
+    S.tgChecking = true;
+    api("tgCheck", S.token).then(function (r) {
+      if (r && r.linked) { S.tgWait = 0; S.tgLinked = true; renderTg(); toast("Đã kết nối Telegram."); }
+      else if (manual) toast("Chưa thấy bạn bấm Start trong Telegram. Mở Telegram, bấm Start rồi thử lại.");
+    }).catch(function (e) { if (manual) failToast(e, "Chưa kiểm tra được. Thử lại sau."); })
+      .then(function () { S.tgChecking = false; });
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && S.tgWait) setTimeout(function () { checkTg(false); }, 800); });
+  setInterval(function () { if (S.tgWait && !document.hidden) checkTg(false); }, 6000);
 
   /* ---------- cài app (PWA) — Android, iPhone/iPad (Safari, Chrome, Edge), máy tính ---------- */
   var installEvt = null, IB = "nhaminh.installHidden";
@@ -1972,8 +2044,9 @@ var AUTO_DEMO = false;
     api("info").then(function (r) {
       S.zaloAppId = (r && r.zaloAppId) || "";
       S.vapid = (r && r.vapidKey) || "";
+      S.tgBot = (r && r.tgBot) || "";
       $("zaloBox").hidden = !S.zaloAppId;
-      renderZaloCard(); refreshPush();
+      renderZaloCard(); refreshPush(); renderTg();
       return hasCode ? handleZaloReturn().then(start) : null;
     }, function () { if (hasCode) start(); });
   }
